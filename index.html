@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0c12'/><path d='M16 5c4 0 7 3 7 7 0 3-2 5-3 7l-4 8-4-8c-1-2-3-4-3-7 0-4 3-7 7-7z' fill='%23e8eef7'/></svg>">
 <style>
   :root{
-    --bg:#05070b; --panel:#0b0f16; --ink:#e9eef7; --dim:#7f8ea6;
+    --bg:#05070b; --ink:#e9eef7; --dim:#7f8ea6;
     --accent:#a8c6ff; --accent2:#5f7fbe; --line:rgba(168,198,255,.16);
   }
   *{margin:0;padding:0;box-sizing:border-box}
@@ -31,8 +31,11 @@
 
   .note{font-size:13.5px;line-height:1.7;color:#93a3bb}
   .note b{color:#cfdcf2;font-weight:500}
+  .keys{margin-top:18px;font-size:12px;letter-spacing:.06em;color:#8494ab;line-height:1.9}
+  .keys kbd{display:inline-block;padding:2px 7px;margin:0 2px;border-radius:3px;font:inherit;font-size:11.5px;
+    color:#dbe6f7;background:rgba(168,198,255,.12);border:1px solid rgba(168,198,255,.22)}
 
-  .btn{margin-top:28px;padding:13px 40px;border-radius:2px;border:1px solid rgba(168,198,255,.45);
+  .btn{margin-top:26px;padding:13px 40px;border-radius:2px;border:1px solid rgba(168,198,255,.45);
     background:linear-gradient(180deg,rgba(168,198,255,.14),rgba(168,198,255,.05));
     color:#f2f6fd;font:inherit;font-size:13px;letter-spacing:.22em;text-transform:uppercase;
     cursor:pointer;transition:background .2s,border-color .2s,transform .12s}
@@ -56,16 +59,9 @@
     max-height:32vh;overflow:auto;white-space:pre-wrap;word-break:break-word}
   #error-box.show{display:block}
 
-  #hud{position:fixed;top:10px;left:10px;z-index:15;font:11px/1.4 ui-monospace,monospace;color:rgba(233,238,247,.5);
+  #hud{position:fixed;top:10px;left:10px;z-index:15;font:11px/1.4 ui-monospace,monospace;color:rgba(233,238,247,.42);
     letter-spacing:.06em;pointer-events:none;opacity:0;transition:opacity .5s}
   #hud.on{opacity:1}
-  .ghost-btn{position:fixed;z-index:16;padding:8px 14px;font:11px/1 inherit;letter-spacing:.16em;text-transform:uppercase;
-    color:#c9d7ee;background:rgba(10,14,20,.72);border:1px solid rgba(168,198,255,.18);border-radius:2px;cursor:pointer;
-    opacity:0;transition:opacity .4s,background .2s}
-  .ghost-btn.on{opacity:1}
-  .ghost-btn:hover{background:rgba(20,28,40,.9);border-color:rgba(168,198,255,.45)}
-  #btn-save{top:10px;right:10px}
-  #btn-fs{top:10px;right:96px}
   .hidden{display:none!important}
   @media (max-width:520px){ .card{padding:0 18px} .note{font-size:12.5px} }
 </style>
@@ -90,6 +86,11 @@
       first load. Best on desktop Chrome or Edge with <b>4&nbsp;GB+</b> RAM.
       Mobile browsers will most likely run out of memory.
     </p>
+    <div class="keys">
+      Move <kbd>A</kbd><kbd>D</kbd> or <kbd>&larr;</kbd><kbd>&rarr;</kbd>
+      &nbsp;&middot;&nbsp; Jump <kbd>Space</kbd>
+      <br>Every other binding can be changed in <b>Options &rarr; Controls</b>.
+    </div>
     <button class="btn" id="btn-play">Enter Hallownest</button>
     <div class="credit">port by <b>bog</b> &middot; <a href="https://truffed.lol" target="_blank" rel="noopener">truffed.lol</a></div>
   </div>
@@ -112,8 +113,6 @@
 </div>
 
 <div id="hud"></div>
-<button class="ghost-btn" id="btn-fs">Fullscreen</button>
-<button class="ghost-btn" id="btn-save">Save data</button>
 
 <script>
 (function () {
@@ -146,8 +145,6 @@
   var errBox = el("error-box");
   var retryBtn = el("btn-retry");
   var hud = el("hud");
-  var btnFs = el("btn-fs");
-  var btnSave = el("btn-save");
 
   var loadedBytes = 0;
   var abortCurrent = false;
@@ -180,10 +177,41 @@
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  // ---- keyboard: Space jumps ------------------------------------------
+  // The game's default jump key is Z. Rather than making people reach for it
+  // in a browser, any key in this table is rewritten in place before the
+  // engine's own listener sees the event (the engine reads key/keyCode/code).
+  var KEY_ALIASES = {
+    Space: { key: "z", code: "KeyZ", keyCode: 90 }
+  };
+
+  function aliasKey(e) {
+    var alias = KEY_ALIASES[e.code];
+    if (!alias) return;
+    var props = {
+      key: alias.key,
+      code: alias.code,
+      keyCode: alias.keyCode,
+      which: alias.keyCode,
+      charCode: alias.keyCode
+    };
+    Object.keys(props).forEach(function (name) {
+      try {
+        Object.defineProperty(e, name, {
+          configurable: true,
+          get: function () { return props[name]; }
+        });
+      } catch (err) { /* frozen event, leave as-is */ }
+    });
+    e.preventDefault();
+  }
+
+  window.addEventListener("keydown", aliasKey, true);
+  window.addEventListener("keyup", aliasKey, true);
+
   // Download one chunk of the split build, with per-attempt host rotation.
   function fetchPart(path, expectedSize) {
     var attempt = 0;
-    var lastError = null;
 
     function tryOnce() {
       var base = ASSET_BASES[attempt % ASSET_BASES.length];
@@ -209,8 +237,6 @@
           });
         })();
       }).catch(function (e) {
-        lastError = e;
-        loadedBytes = Math.max(0, loadedBytes);
         attempt += 1;
         if (attempt >= 6) throw new Error(path + ": " + (e && e.message ? e.message : e));
         return sleep(400 * attempt).then(tryOnce);
@@ -301,7 +327,7 @@
           dataUrl: dataUrl,
           frameworkUrl: "Build/hktruffled.framework.js",
           codeUrl: codeUrl,
-          streamingAssetsUrl: new URL("StreamingAssets/", document.baseURI).href,
+          streamingAssetsUrl: "StreamingAssets",
           companyName: "Team Cherry",
           productName: "Hollow Knight",
           productVersion: "1.0",
@@ -320,8 +346,6 @@
       loadingScreen.classList.add("hide");
       setTimeout(function () { loadingScreen.classList.add("hidden"); }, 700);
       hud.classList.add("on");
-      btnFs.classList.add("on");
-      btnSave.classList.add("on");
       canvas.focus();
       startFps();
     }).catch(function (err) {
@@ -350,78 +374,6 @@
     })();
   }
 
-  // ---- fullscreen ------------------------------------------------------
-  btnFs.addEventListener("click", function () {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(function () {});
-    } else if (canvas.requestPointerLock) {
-      canvas.requestPointerLock();
-    }
-  });
-
-  // ---- save export (Unity IndexedDB filesystems) -----------------------
-  function openDb(name) {
-    return new Promise(function (ok, bad) {
-      var req = indexedDB.open(name);
-      req.onsuccess = function () { ok(req.result); };
-      req.onerror = function () { bad(req.error); };
-    });
-  }
-  function readStore(db, store) {
-    return new Promise(function (ok, bad) {
-      var tx = db.transaction([store], "readonly");
-      var req = tx.objectStore(store).getAll();
-      req.onsuccess = function () { ok(req.result); };
-      req.onerror = function () { bad(req.error); };
-    });
-  }
-  btnSave.addEventListener("click", function () {
-    var saved = {};
-    var found = false;
-    var names = indexedDB.databases ? indexedDB.databases() : Promise.resolve([]);
-    names.then(function (list) {
-      return list.reduce(function (chain, info) {
-        return chain.then(function () {
-          return openDb(info.name).then(function (db) {
-            var stores = Array.prototype.slice.call(db.objectStoreNames);
-            return stores.reduce(function (c, store) {
-              return c.then(function () {
-                return readStore(db, store).then(function (rows) {
-                  if (!rows || !rows.length) return;
-                  saved[info.name + "/" + store] = rows.map(function (row) {
-                    if (row && row.contents instanceof Uint8Array) {
-                      var copy = {};
-                      for (var k in row) copy[k] = row[k];
-                      copy.contents = Array.from(row.contents);
-                      return copy;
-                    }
-                    return row;
-                  });
-                  found = true;
-                }).catch(function () {});
-              });
-            }, Promise.resolve()).then(function () { db.close(); });
-          }).catch(function () {});
-        });
-      }, Promise.resolve());
-    }).then(function () {
-      if (!found) { alert("No save data found yet."); return; }
-      var blob = new Blob([JSON.stringify(saved)], { type: "application/octet-stream" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "hk_save.dat";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }).catch(function (e) {
-      alert("Download failed: " + (e && e.message ? e.message : e));
-    });
-  });
-
   // ---- entry points ----------------------------------------------------
   el("btn-play").addEventListener("click", function () {
     boot();
@@ -438,10 +390,6 @@
     note.textContent = "Heads up: mobile browsers usually run out of memory with a build this size.";
     document.querySelector("#start .note").after(note);
   }
-
-  window.addEventListener("keydown", function (e) {
-    if (e.key === "F11") return;
-  });
 })();
 </script>
 </body>
