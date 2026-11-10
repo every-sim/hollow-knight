@@ -277,13 +277,18 @@
   // for cutscene URLs, and loaded from a blob instead of the raw file.
   var FRAMEWORK_ANCHOR = "var shouldRunNow=true;";
   var FRAMEWORK_PATCH =
-    "(function(){try{if(typeof FS==='undefined'||!FS||!FS.lookupPath)return;" +
+    "(function(){try{" +
+    "if(typeof FS==='undefined'||!FS||!FS.lookupPath)return;" +
     "var o=FS.lookupPath;" +
-    "FS.lookupPath=function(p,opts){try{return o.call(FS,p,opts);}catch(e){" +
+    "function fstat(){return{dev:1,ino:1,mode:33206,nlink:1,uid:0,gid:0,rdev:0,size:1048576," +
+    "atime:0,mtime:0,ctime:0,blksize:4096,blocks:2048};}" +
+    "FS.lookupPath=function(p,opts){" +
+    "try{return o.call(FS,p,opts);}catch(e){" +
     "var s=(typeof p==='string')?p:((p&&p.path)||'');" +
     "if(/^https?:\\/\\/[^\\s]+\\.(webm|mp4)$/i.test(s)){" +
     "return{path:s,node:{mode:33206,size:1048576,atime:0,mtime:0,ctime:0,uid:0,gid:0," +
-    "usedBytes:0,contents:new Uint8Array(0)}};}" +
+    "usedBytes:0,contents:new Uint8Array(0)," +
+    "node_ops:{getattr:fstat,setattr:function(){}},stream_ops:{}}};}" +
     "throw e;}};}catch(e){}})();";
 
   function prepareFramework() {
