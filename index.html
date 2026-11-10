@@ -62,6 +62,17 @@
   #hud{position:fixed;top:10px;left:10px;z-index:15;font:11px/1.4 ui-monospace,monospace;color:rgba(233,238,247,.42);
     letter-spacing:.06em;pointer-events:none;opacity:0;transition:opacity .5s}
   #hud.on{opacity:1}
+  #cut-fade{position:fixed;inset:0;background:#000;z-index:18;display:flex;align-items:center;justify-content:center;
+    opacity:0;pointer-events:none;transition:opacity .45s ease}
+  #cut-fade.on{opacity:1}
+  .cut-inner{display:flex;flex-direction:column;align-items:center;gap:16px;opacity:.9}
+  .cut-inner svg{width:44px;height:44px;opacity:.75}
+  .cut-inner span{font-size:11.5px;letter-spacing:.34em;text-transform:uppercase;color:#9fb0c9;text-indent:.34em}
+  .cut-inner i{display:block;width:86px;height:2px;background:rgba(168,198,255,.16);position:relative;overflow:hidden}
+  .cut-inner i::after{content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(200,220,255,.85),transparent);animation:cutSlide 1.15s linear infinite}
+  @keyframes cutSlide{to{left:100%}}
+  @media (prefers-reduced-motion:reduce){ .cut-inner i::after{animation:none;left:0;width:100%;background:rgba(200,220,255,.4)} }
   .hidden{display:none!important}
   @media (max-width:520px){ .card{padding:0 18px} .note{font-size:12.5px} }
 </style>
@@ -109,6 +120,19 @@
     <div id="error-box"></div>
     <button class="btn ghost hidden" id="btn-retry">Retry download</button>
     <div class="credit">port by <b>everybodysim</b> &middot; truffed.lol</div>
+  </div>
+</div>
+
+<div id="cut-fade" aria-hidden="true">
+  <div class="cut-inner">
+    <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <path d="M32 6c9 0 15 6.5 15 15 0 6.5-4 11-6.5 15.5L32 58l-8.5-21.5C21 32 17 27.5 17 21 17 12.5 23 6 32 6z"
+            stroke="#dce6f5" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="26.5" cy="22" r="2.6" fill="#05070b" stroke="#dce6f5" stroke-width="1.4"/>
+      <circle cx="37.5" cy="22" r="2.6" fill="#05070b" stroke="#dce6f5" stroke-width="1.4"/>
+    </svg>
+    <span>Loading</span>
+    <i></i>
   </div>
 </div>
 
@@ -272,36 +296,66 @@
   // ---- cutscene plumbing ------------------------------------------------
   // The game asks File.Exists() whether a cutscene exists before handing the
   // URL to the VideoPlayer. There is no disk in a browser, so that call is
-  // always false and the game falls back to an embedded clip the WebGL backend
-  // cannot draw. The engine reaches the file system through emscripten, which
-  // lives in framework.js, so the framework is fetched, taught to answer "yes"
-  // for cutscene URLs, and loaded from a blob instead of the raw file.
-  var FRAMEWORK_ANCHOR = "var shouldRunNow=true;";
-  var FRAMEWORK_PATCH =
-    "(function(){try{" +
-    "if(typeof FS==='undefined'||!FS||!FS.lookupPath)return;" +
-    "var o=FS.lookupPath;" +
-    "function fstat(){return{dev:1,ino:1,mode:33206,nlink:1,uid:0,gid:0,rdev:0,size:1048576," +
-    "atime:0,mtime:0,ctime:0,blksize:4096,blocks:2048};}" +
-    "FS.lookupPath=function(p,opts){" +
-    "try{return o.call(FS,p,opts);}catch(e){" +
-    "var s=(typeof p==='string')?p:((p&&p.path)||'');" +
-    "if(/^https?:\\/\\/[^\\s]+\\.(webm|mp4)$/i.test(s)){" +
-    "return{path:s,node:{mode:33206,size:1048576,atime:0,mtime:0,ctime:0,uid:0,gid:0," +
-    "usedBytes:0,contents:new Uint8Array(0)," +
-    "node_ops:{getattr:fstat,setattr:function(){}},stream_ops:{}}};}" +
-    "throw e;}};}catch(e){}})();";
+  // ---- cutscene transition ---------------------------------------------
+  // The ported build cannot hand its cinematic videos to the WebGL player, so
+  // every cutscene stalls at "video load" and resumes a moment later. Rather
+  // than showing a frozen frame, the page watches the engine's own log and
+  // fades through a black loading card while that happens.
+  var LOADING_ON = [/Waiting for CinematicVideoPlayer/i, /Skipped cinematic/i];
+  var LOADING_OFF = [/Cinematics are finished/i, /Skipping cinematic/i, /Loaded cinematic/i];
+  var loadingWatch = { visible: false, shownAt: 0, hideTimer: 0, failsafe: 0 };
 
-  function prepareFramework() {
-    return fetch("Build/hktruffled.framework.js", { cache: "no-store" }).then(function (res) {
-      if (!res.ok) throw new Error("framework " + res.status);
-      return res.text();
-    }).then(function (src) {
-      if (src.indexOf(FRAMEWORK_ANCHOR) === -1) return "Build/hktruffled.framework.js";
-      var patched = src.replace(FRAMEWORK_ANCHOR, FRAMEWORK_PATCH + FRAMEWORK_ANCHOR);
-      return URL.createObjectURL(new Blob([patched], { type: "text/javascript" }));
-    }).catch(function () {
-      return "Build/hktruffled.framework.js";
+  function watchText(args) {
+    var text = "";
+    for (var i = 0; i < args.length; i++) {
+      var a = args[i];
+      if (typeof a === "string") text += a + " ";
+      else if (a && typeof a.message === "string") text += a.message + " ";
+    }
+    return text;
+  }
+
+  function loadingShow() {
+    if (loadingWatch.visible) return;
+    loadingWatch.visible = true;
+    loadingWatch.shownAt = Date.now();
+    var card = document.getElementById("cut-fade");
+    if (!card) return;
+    card.classList.add("on");
+    clearTimeout(loadingWatch.failsafe);
+    loadingWatch.failsafe = setTimeout(loadingHide, 20000);
+  }
+
+  function loadingHide() {
+    if (!loadingWatch.visible) return;
+    var waited = Date.now() - loadingWatch.shownAt;
+    var card = document.getElementById("cut-fade");
+    var go = function () {
+      loadingWatch.visible = false;
+      clearTimeout(loadingWatch.failsafe);
+      if (card) card.classList.remove("on");
+    };
+    // never flash: keep the card up for at least a beat
+    if (waited < 1400) setTimeout(go, 1400 - waited);
+    else go();
+  }
+
+  function installCutsceneWatch() {
+    ["log", "warn", "error", "info"].forEach(function (level) {
+      var original = console[level];
+      if (!original || original.__cutsceneWrapped) return;
+      var wrapped = function () {
+        try {
+          var text = watchText(arguments);
+          if (text) {
+            if (LOADING_ON.some(function (re) { return re.test(text); })) loadingShow();
+            else if (LOADING_OFF.some(function (re) { return re.test(text); })) loadingHide();
+          }
+        } catch (err) { /* never let logging break the engine */ }
+        return original.apply(console, arguments);
+      };
+      wrapped.__cutsceneWrapped = true;
+      console[level] = wrapped;
     });
   }
 
@@ -359,13 +413,12 @@
       var codeUrl = URL.createObjectURL(wasmBlob);
       setStage("Starting engine");
       return loadScript("Build/hktruffled.loader.js").then(function () {
-        return prepareFramework();
-      }).then(function (frameworkUrl) {
+        installCutsceneWatch();
         if (typeof createUnityInstance !== "function") throw new Error("Unity loader did not initialise");
         setStage("Compiling engine");
         return createUnityInstance(canvas, {
           dataUrl: dataUrl,
-          frameworkUrl: frameworkUrl,
+          frameworkUrl: "Build/hktruffled.framework.js",
           codeUrl: codeUrl,
           streamingAssetsUrl: "StreamingAssets",
           companyName: "Team Cherry",
