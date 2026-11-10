@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cinematics - Hollow Knight</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0c12'/><path d='M16 5c4 0 7 3 7 7 0 3-2 5-3 7l-4 8-4-8c-1-2-3-4-3-7 0-4 3-7 7-7z' fill='%23e8eef7'/></svg>">
+<style>
+  :root{
+    --bg:#05070b; --panel:#080b12; --ink:#e9eef7; --dim:#7f8ea6;
+    --accent:#a8c6ff; --line:rgba(168,198,255,.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%}
+  body{background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:inherit}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 22px 48px}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding-bottom:18px;border-bottom:1px solid var(--line)}
+  .brand h1{font-size:clamp(20px,3.4vw,28px);font-weight:300;letter-spacing:.34em;text-transform:uppercase;text-indent:.34em}
+  .brand p{margin-top:8px;font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .back{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#9db1cf;text-decoration:none;
+    border-bottom:1px solid rgba(157,177,207,.28);padding-bottom:2px;white-space:nowrap}
+  .back:hover{color:#dfe9f8;border-color:#dfe9f8}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:26px;margin-top:26px}
+  @media (max-width:840px){ .layout{grid-template-columns:minmax(0,1fr)} }
+
+  .stage{background:#000;border:1px solid var(--line);position:relative;overflow:hidden}
+  .stage video{display:block;width:100%;height:auto;background:#000;aspect-ratio:16/9}
+  .meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+  .now{font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:#c8d6ea}
+  .hint{font-size:11px;letter-spacing:.1em;color:#5f6d83}
+  .hint kbd{font:inherit;padding:1px 6px;border-radius:3px;background:rgba(168,198,255,.12);
+    border:1px solid rgba(168,198,255,.2);color:#cfdcf2}
+  .warn{display:none;margin-top:12px;padding:11px 13px;font-size:12.5px;line-height:1.6;color:#ffdca8;
+    border:1px solid rgba(224,180,106,.35);background:rgba(120,90,20,.16)}
+  .warn.show{display:block}
+
+  .list{border:1px solid var(--line);background:var(--panel);max-height:min(70vh,620px);overflow:auto}
+  .list h2{position:sticky;top:0;z-index:1;background:var(--panel);padding:13px 15px;font-size:11px;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--dim);font-weight:400;border-bottom:1px solid var(--line)}
+  .item{display:flex;align-items:center;gap:11px;width:100%;padding:11px 15px;border:0;border-bottom:1px solid rgba(168,198,255,.07);
+    background:none;color:#b9c7db;font:inherit;font-size:13.5px;text-align:left;cursor:pointer;
+    transition:background .15s,color .15s}
+  .item:last-child{border-bottom:0}
+  .item:hover{background:rgba(168,198,255,.06);color:#eaf1fb}
+  .item .num{font-size:10.5px;color:#556277;width:18px;flex:none;font-variant-numeric:tabular-nums}
+  .item .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .dur{font-size:10.5px;color:#556277;font-variant-numeric:tabular-nums}
+  .item[aria-current="true"]{background:rgba(168,198,255,.12);color:#fff;box-shadow:inset 2px 0 0 var(--accent)}
+  .item[aria-current="true"] .num,.item[aria-current="true"] .dur{color:#a8c6ff}
+
+  footer{margin-top:30px;font-size:11.5px;letter-spacing:.1em;color:#556277;line-height:1.9}
+  footer a{color:#8ea6c9;text-decoration:none;border-bottom:1px solid rgba(142,166,201,.3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Cinematics</h1>
+      <p>Hollow Knight &middot; WebGL Port</p>
+    </div>
+    <a class="back" href="./">&larr; Back to the game</a>
+  </header>
+
+  <div class="layout">
+    <main>
+      <div class="stage">
+        <video id="player" controls playsinline preload="metadata" poster=""></video>
+      </div>
+      <div class="meta">
+        <div class="now" id="now">&mdash;</div>
+        <div class="hint"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> change &middot; <kbd>Space</kbd> play / pause</div>
+      </div>
+      <div class="warn" id="warn"></div>
+    </main>
+
+    <aside class="list" id="list">
+      <h2>All cutscenes</h2>
+    </aside>
+  </div>
+
+  <footer>
+    The WebGL build asks for cutscenes through a file-existence check that cannot succeed in a browser,
+    so it falls back to an embedded clip that WebGL cannot draw. The clips play here instead.
+    <br>Video files: 1080p VP8 / Vorbis WebM, the exact format the game itself uses.
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CLIPS = [
+    { file: "Prologue.webm",        name: "Prologue" },
+    { file: "Intro.webm",           name: "Intro" },
+    { file: "StagTunnelRun.webm",   name: "Stag Tunnel Run" },
+    { file: "CharmSlugKiss.webm",   name: "Charm Slug Kiss" },
+    { file: "Nailsmith.webm",       name: "Nailsmith" },
+    { file: "NailsmithPaint.webm",  name: "Nailsmith Paint" },
+    { file: "Blacksmith.webm",      name: "Blacksmith" },
+    { file: "MrMushroom.webm",      name: "Mr. Mushroom" },
+    { file: "Telescope.webm",       name: "Telescope" },
+    { file: "Fountain.webm",        name: "Fountain" },
+    { file: "MaskShatter.webm",     name: "Mask Shatter" },
+    { file: "FinalA.webm",          name: "Ending A" },
+    { file: "FinalB.webm",          name: "Ending B" },
+    { file: "FinalC.webm",          name: "Ending C" },
+    { file: "FinalD.webm",          name: "Ending D" },
+    { file: "FinalE.webm",          name: "Ending E" }
+  ];
+
+  var BASE = "StreamingAssets/";
+  var player = document.getElementById("player");
+  var nowEl = document.getElementById("now");
+  var warnEl = document.getElementById("warn");
+  var listEl = document.getElementById("list");
+  var items = [];
+  var current = -1;
+
+  function fmt(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return "";
+    var m = Math.floor(seconds / 60);
+    var s = Math.floor(seconds % 60);
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  CLIPS.forEach(function (clip, index) {
+    var btn = document.createElement("button");
+    btn.className = "item";
+    btn.type = "button";
+    btn.setAttribute("aria-current", "false");
+
+    var num = document.createElement("span");
+    num.className = "num";
+    num.textContent = String(index + 1).padStart(2, "0");
+
+    var name = document.createElement("span");
+    name.className = "name";
+    name.textContent = clip.name;
+
+    var dur = document.createElement("span");
+    dur.className = "dur";
+
+    btn.appendChild(num);
+    btn.appendChild(name);
+    btn.appendChild(dur);
+    btn.addEventListener("click", function () { play(index, true); });
+
+    listEl.appendChild(btn);
+    items.push({ button: btn, dur: dur });
+  });
+
+  function play(index, autoplay) {
+    if (index < 0) index = CLIPS.length - 1;
+    if (index >= CLIPS.length) index = 0;
+    current = index;
+
+    var clip = CLIPS[index];
+    player.src = BASE + clip.file;
+    player.load();
+    nowEl.textContent = clip.name;
+    items.forEach(function (item, i) {
+      item.button.setAttribute("aria-current", i === index ? "true" : "false");
+    });
+    items[index].button.scrollIntoView({ block: "nearest" });
+
+    if (autoplay) {
+      var started = player.play();
+      if (started && started.catch) {
+        started.catch(function () {
+          /* autoplay blocked, the user still has the play button */
+        });
+      }
+    }
+  }
+
+  player.addEventListener("loadedmetadata", function () {
+    if (current >= 0) items[current].dur.textContent = fmt(player.duration);
+  });
+
+  player.addEventListener("ended", function () {
+    if (current < CLIPS.length - 1) play(current + 1, true);
+  });
+
+  player.addEventListener("error", function () {
+    warnEl.textContent = "This browser cannot decode the file. It is VP8 video with Vorbis audio in WebM, " +
+      "which Chrome, Edge and Firefox handle. Try one of those.";
+    warnEl.classList.add("show");
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target && e.target.tagName === "VIDEO") return;
+    if (e.key === "ArrowRight") { play(current + 1, true); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { play(current - 1, true); e.preventDefault(); }
+  });
+
+  var probe = document.createElement("video");
+  if (!probe.canPlayType || probe.canPlayType('video/webm; codecs="vp8, vorbis"') === "") {
+    warnEl.textContent = "Heads up: this browser reports no support for VP8 WebM. Chrome, Edge or Firefox will play these.";
+    warnEl.classList.add("show");
+  }
+
+  var hash = parseInt((location.hash || "").replace("#", ""), 10);
+  play(isFinite(hash) && hash >= 1 && hash <= CLIPS.length ? hash - 1 : 0, false);
+})();
+</script>
+</body>
+</html>
